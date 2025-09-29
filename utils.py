@@ -38,7 +38,6 @@ def show_anns(anns):
 
 
 class CLIPAttention(nn.Module):
-    """Multi-headed attention from 'Attention Is All You Need' paper"""
 
     def __init__(self, config):
         super().__init__()
@@ -116,10 +115,6 @@ class CLIPAttention(nn.Module):
         attn_weights = nn.functional.softmax(attn_weights, dim=-1)
 
         if output_attentions:
-            # this operation is a bit akward, but it's required to
-            # make sure that attn_weights keeps its gradient.
-            # In order to do so, attn_weights have to reshaped
-            # twice and have to be reused in the following
             attn_weights_reshaped = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
             attn_weights = attn_weights_reshaped.view(bsz * self.num_heads, tgt_len, src_len)
         else:
@@ -140,7 +135,6 @@ class CLIPAttention(nn.Module):
 
         attn_output = self.out_proj(attn_output)
 
-        # return attn_output, attn_weights_reshaped
         return attn_output, attn_output, qks
 
 
@@ -176,17 +170,6 @@ class CLIPEncoderLayer(nn.Module):
             output_attentions: bool = False,
             output_qks: bool = False,
     ):
-        """
-        Args:
-            hidden_states (:obj:`torch.FloatTensor`): input to the layer of shape :obj:`(seq_len, batch, embed_dim)`
-            attention_mask (:obj:`torch.FloatTensor`): attention mask of size
-                :obj:`(batch, 1, tgt_len, src_len)` where padding elements are indicated by very large negative values.
-            layer_head_mask (:obj:`torch.FloatTensor`): mask for attention heads in a given layer of size
-                :obj:`(config.encoder_attention_heads,)`.
-            output_attentions (:obj:`bool`, `optional`):
-                Whether or not to return the attentions tensors of all attention layers. See ``attentions`` under
-                returned tensors for more detail.
-        """
         residual = hidden_states
 
         hidden_states = self.layer_norm1(hidden_states)
@@ -215,7 +198,6 @@ class CLIPEncoderLayer(nn.Module):
         return outputs
 
 def get_size(obj):
-    # 递归函数，获取对象占用的内存大小
     size = sys.getsizeof(obj)
     if isinstance(obj, torch.Tensor):
         size += obj.element_size() * obj.nelement()
@@ -226,10 +208,3 @@ def get_size(obj):
     elif isinstance(obj, torch.nn.Module):
         size += sum(get_size(p) for p in obj.parameters())
     return size
-
-    # model_params_size = get_size(mm.parameters())
-    # logging.info("Model Parameters Size:", model_params_size, "bytes")
-    # cpu_model = mm.cpu()
-    # # 计算模型数据的内存大小
-    # model_data_size = get_size(cpu_model)
-    # logging.info("Model Data Size:", model_data_size, "bytes")
