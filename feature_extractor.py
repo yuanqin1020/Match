@@ -1,0 +1,212 @@
+
+import logging
+import torch
+import torch.nn as nn
+import data_handler as handler
+from transformers import BertTokenizer, BertModel
+from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+from torch_geometric.data import Data
+
+
+import os
+from datetime import datetime
+import pickle
+
+
+def attr_encoder(root):
+    cache_dir = root + "bert-base-uncased"
+    # Create a BERT tokenizer to convert vertex labels to indices
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', cache_dir=cache_dir, local_files_only=True)
+    # Create a BERT model to extract features from vertex labels
+    model = BertModel.from_pretrained("bert-base-uncased", cache_dir=cache_dir, local_files_only=True,
+                                      output_hidden_states=True)
+    model.eval()
+    print("BERT model load complete.")
+
+    return model, tokenizer
+
+def sent_embed(sentence, model, tokenizer, device):
+    # 将句子编码为BERT输入格式
+    inputs = tokenizer.encode_plus(sentence, add_special_tokens=True, return_tensors='pt').to(device)
+
+    # 获取句子的BERT向量
+    with torch.no_grad():
+        outputs = model(inputs['input_ids'], attention_mask=inputs['attention_mask'])
+
+    # 提取句子的向量表示
+    sentence_vector = outputs.last_hidden_state.mean(dim=1)
+
+    return sentence_vector
+
+
+def sam_encoder(device, model_type, ckp_path):
+    sam = sam_model_registry[model_type](checkpoint=ckp_path).to(device=device)
+    sam.eval()
+    mask_generator = SamAutomaticMaskGenerator(sam, points_per_side=32,
+                                               # points_per_batch=58,
+                                               pred_iou_thresh=0.9,
+                                               stability_score_thresh=0.92,
+                                               crop_n_layers=1,
+                                               crop_n_points_downscale_factor=2,
+                                               min_mask_region_area=100)
+    print("SAM model load complete.")
+
+    return mask_generator
+
+
+def attr_feature(entity_index, model, tokenizer):
+    vertex_labels = entity_index.keys()
+    num_vertices = len(entity_index)
+
+    # Create an embedding layer to map BERT features to vertex embeddings
+    embedding = nn.Embedding(num_vertices, 768)
+    print(f"embedding shape: [{num_vertices}, 768]")
+
+    # Initialize a tensor to store vertex embeddings
+    vertex_embeddings = torch.zeros(num_vertices, 768)
+
+    # Iterate over each vertex label and compute its embedding
+    for i, label in enumerate(vertex_labels):
+        # Add special tokens to vertex label
+        marked_label = "[CLS] " + label + " [SEP]"
+        # Tokenize vertex label
+        tokenized_label = tokenizer.tokenize(marked_label)
+        # Convert tokenized label to indices
+        indexed_label = tokenizer.convert_tokens_to_ids(tokenized_label)
+        # Convert indices to tensor
+        label_tensor = torch.tensor([indexed_label])
+        # Extract features from vertex label using BERT model
+        with torch.no_grad():
+            outputs = model(label_tensor)
+            hidden_states = outputs[2]
+
+        # Get the last hidden state of the first token ([CLS]) as the vertex representation
+        label_representation = hidden_states[-1][0][0]
+
+        # Store vertex embedding in tensor
+        vertex_embeddings[i] = label_representation
+
+    vertex_embeddings = torch.tensor(vertex_embeddings).to(torch.float)
+
+    return vertex_embeddings / vertex_embeddings.norm(dim=-1, keepdim=True)
+
+
+import csv
+def read_caption_dict(file_path):
+    dict = {}
+    start = datetime.now()
+
+    with open(file_path, 'r') as file:
+        csv_reader = csv.reader(file)
+        
+        # Skip the header row
+        next(csv_reader)
+        
+        # Iterate over each line in the CSV file
+        for line in csv_reader:
+            id_value, class_value = line[0], line[1]
+            dict[id_value] = class_value
+
+    print(f"caption read takes: {datetime.now() - start}.")
+    
+    return dict
+
+#file = "/home/zhangjunyu/yq/Match/cache/guidance/train_openImages_with_guidance.json"
+def get_img_caption(file, mode, dataset):
+    import json
+    path = file + mode + "_" + dataset + "_with_guidance.json"
+    print(f"Read path: {path}")
+
+    result = {}
+    with open(path, 'r') as f:
+        for line in f:
+            try:
+                data = json.loads(line)
+                image_path = data['image_path'].split("/")[-1].split(".")[0]
+                captions = data['caption']
+                scores = data['scores']
+                max_score_index = scores.index(max(scores))
+                max_score_caption = captions[max_score_index]
+                result[image_path] = max_score_caption
+            except Exception as e:
+                print(f"caption error : {e}")
+                continue
+            
+            if len(result) == 1:
+                print(f"img_path: {image_path}, caption: {max_score_caption}")
+
+    return result
+
+
+def get_scene_graph(mask_generator, image_path, iou_threshold, 
+                    vis_merge, crop, image_encoder, clip_preprocess, device, captions=None):
+    """
+        x: vertex feature
+        edge_index: 2-dim edge list
+        y: mean representation of vertices in scene graph
+    """
+
+    logging.info(image_path)
+
+    # 提取目录路径
+    # filename = os.path.splitext(os.path.basename(image_path))[0]
+
+    imageid = str(image_path.split("/")[-1].split(".")[0])
+
+    start = datetime.now()
+
+    pixel_embs, edge_index = handler.img_to_graph(mask_generator, image_path, vis_merge, crop, 
+                                                  image_encoder, clip_preprocess, device, iou_threshold)
+
+    # pixel_embs: (1, 256, 64, 64)
+    obj_embs = pixel_embs.clone().detach().to(torch.float)
+    # vertex_embeddings = torch.tensor(pixel_embs, dtype=torch.float)
+    obj_embs = obj_embs / obj_embs.norm(dim=-1, keepdim=True)
+    edge_index = torch.tensor(edge_index, dtype=torch.long).t()
+
+    scene_graph = Data(x=obj_embs, edge_index=edge_index, y="")
+
+    if captions != None and imageid in captions:
+        caption = captions[imageid]
+    else:
+        caption = ""
+    # print(f"imageid: {imageid}, caption: {caption}")
+    scene_graph.y = caption
+
+    print(f"Number of {len(pixel_embs)} masks feature extraction takes: {datetime.now() - start}.")
+
+    return scene_graph
+
+
+def check_disk_space(path, threshold):
+    stat = os.statvfs(path)
+    free_space = stat.f_frsize * stat.f_bavail / (1024*1024*1024)  # 转换为GB
+    return free_space > threshold
+
+
+def get_scene_batches(mask_generator, images, iou_threshold, vis_merge, crop, image_encoder, clip_preprocess, device, captions=None):
+    scenes = {}
+
+    for image in images:
+        scene_graph = get_scene_graph(mask_generator, image, iou_threshold, vis_merge, crop, image_encoder, clip_preprocess, device, captions=None)
+        if scene_graph.edge_index.numel() != 0:
+            scenes[image] = scene_graph
+
+    return scenes
+
+def kg_x_load(root, mode, kg, id2attr, clip_model, device):
+    import clip
+
+    pkl = root + mode + "_kg.pkl"
+    if os.path.exists(pkl):
+        kg = torch.load(pkl)
+        print(f"Load kg text encodes complete from : {pkl}")
+    else:
+        with torch.no_grad():
+            tokens = [clip.tokenize(id2attr[i][:77]).to(device) for i in range(len(id2attr))]
+            x = [clip_model.encode_text(tokens[i]).to(device) for i in range(len(id2attr))]
+            x = torch.cat(x, dim=0)
+            kg.x = x / x.norm(dim=-1, keepdim=True)
+            torch.save(kg, pkl)
+    
+    return kg
