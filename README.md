@@ -8,6 +8,7 @@ For more technical details, see [CrossETR: A Semantic-Driven Framework for Entit
 ![Overall architecture of CrossETR framework. ](./CrossETR.png)
 
 ## Dependencies and Installion
+```
 scikit-learn==1.3.2
 torch==2.1.0+cu118
 torch-cluster==1.6.3+pt21cu118
@@ -18,12 +19,15 @@ torchaudio==2.1.0+cu118
 torchvision==0.16.0+cu118
 tqdm==4.67.1
 transformers==4.24.0
+```
 
 We recommend creating a new conda environment to install the dependencies:
+```
 conda env remove --name promptdi
 conda create -y -n promptdi python=3.9
 conda activate promptdi
 pip install transformers==4.24.0
+```
 
 ## Datasets
 
@@ -58,7 +62,7 @@ We use bert-base-uncased as the pretrained language model in all experiments.
 
 You can download the pre-trained checkpoint from [Google-BERT](https://huggingface.co/google-bert/bert-base-uncased) manually.
 
-The pre-trained [Segment Anything](https://github.com/facebookresearch/segment-anything) checkpoint can be download from [vit_b](https://huggingface.co/facebook/sam-vit-base)
+The pre-trained [Segment Anything](https://github.com/facebookresearch/segment-anything) checkpoint can be download from [sam-vit-base](https://huggingface.co/facebook/sam-vit-base)
 
 More detailed results can be consulted by following [Quick Start](#quick-start).
 
