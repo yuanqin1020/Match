@@ -19,7 +19,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from datetime import datetime
 from evaluate import *
 
-# Define the GAT model
 class CrossAttentionGAT(nn.Module):
     def __init__(self, in_dim, hidden_dim, num_heads):
         super(CrossAttentionGAT, self).__init__()
@@ -27,7 +26,6 @@ class CrossAttentionGAT(nn.Module):
         self.gat1 = tg.nn.GATConv(in_dim, hidden_dim, heads=num_heads, concat=False)
         self.gat2 = tg.nn.GATConv(in_dim, hidden_dim, heads=num_heads, concat=False)
         self.proj = nn.Sequential(nn.Linear(in_dim, hidden_dim), nn.ReLU())
-        # self.linear = nn.Linear(1024, 128)
 
     def forward(self, graph1, graph2):
         # Compute initial representations for each graph
@@ -39,22 +37,12 @@ class CrossAttentionGAT(nn.Module):
         else:
             emb1 = self.gat1(graph1.x, graph1.edge_index)
             emb2 = self.gat2(graph2.x, graph2.edge_index)
-        
-        # print(f"emb1: {emb1.shape}, emb2: {emb2.shape}")
 
         attention_scores = torch.matmul(emb1, emb2.transpose(0, 1))
         att_weights_1 = torch.softmax(attention_scores, dim=1)
         att_weights_2 = torch.softmax(attention_scores, dim=0)
         cross_att_1 = torch.matmul(att_weights_2, emb2)
         cross_att_2 = torch.matmul(att_weights_1.transpose(0, 1), emb1)
-
-        # cross_att_1 = self.linear(cross_att_1)
-        # cross_att_2 = self.linear(cross_att_2)
-
-        # print(f"cross_att_1: {cross_att_1.shape}, cross_att_2: {cross_att_2.shape}")
-
-        # cross_att_1 = torch.mean(cross_att_1, dim=0).unsqueeze(0)
-        # cross_att_2 = torch.mean(cross_att_2, dim=0).unsqueeze(0)
 
         return cross_att_1, cross_att_2
     
@@ -71,12 +59,9 @@ class GraphEncoder(nn.Module):
 
 
     def forward(self, x, edge_index, batch):
-        # x: node features, shape [num_nodes, input_dim]
-        # edge_index: edge indices, shape [2, num_edges]
         if edge_index.numel() == 0 or edge_index.shape[0] == 0:
             x = self.proj(x)
         elif edge_index.shape[1] == 0:
-            # Special case: graph with only a single node
             x = self.conv1(x, edge_index)
         else:
             x = self.conv1(x, edge_index)
@@ -95,11 +80,9 @@ class GraphMatchModel(nn.Module):
         self.tops = args.tops
         self.hops = args.hops
         self.sampling_bound = args.sampling_bound
-        # self.device = args.device
         self.device = device
         self.lin_dim = lin_dim
         self.lout_dim = lout_dim
-        # 定义图像和文本的降维层
         self.image_reduction = nn.Sequential(nn.Linear(256*64*64, lout_dim),
                                              nn.ReLU())
         self.text_reduction = nn.Sequential(nn.Linear(768, lout_dim),
@@ -117,9 +100,6 @@ class GraphMatchModel(nn.Module):
         self.g_encoder = g_encoder
         self.iou_threshold = args.iou_threshold
         self.pos_num = 1
-        # self.kg_vector = extractor.attr_feature(kg.x, self.attr_encoder, self.tokenizer)
-        # self.kg = kg
-
 
     def forward_nonsample(self, kg, id2attr, scene, clip_model):
         scene = scene.to(self.device)
@@ -127,10 +107,7 @@ class GraphMatchModel(nn.Module):
 
         scene.x = scene.x.float()
         graph.x = graph.x.float()
-
-        # sim_score = torch.matmul(scene.x, graph.x.t())
         y = torch.mean(scene.x, dim=0)
-        # for id, attr in id2attr.item():
         kg_emb = self.g_encoder(kg.x[id], kg.edge_index) # kg.edge_index[:, kg.edge_index[0] == id]
         kg_emb = torch.norm(kg_emb, dim=1, keepdim=True)
         sim_score = torch.matmul(scene.x, kg_emb.t())
@@ -141,13 +118,6 @@ class GraphMatchModel(nn.Module):
         match_degree = torch.mean(sim_score[top_indices], dim=1)
         matches.append(match_degree)
         classes.append(top_indices)
-
-
-        # max_similarity, max_indices = torch.max(sim_score, dim=1)  # 每行的最大相似度
-        # match_degree = torch.mean(max_similarity)  # 平均匹配度
-        # common_id = torch.mode(max_indices).mode.item()
-        # matches = match_degree
-        # classes = id2attr[common_id]
 
         if self.crop == True:
             with torch.no_grad():
@@ -165,17 +135,6 @@ class GraphMatchModel(nn.Module):
         scene = scene.to(self.device)
         graph = kg.clone().to(self.device)
 
-        # 对图像和文本进行特征空间映射
-        # print(f"scene shape: {scene.x.shape}, graph shape: {graph.x.shape}")
-
-        # img_vec = self.image_reduction(scene.x.view(scene.x.shape[0], -1)).type(torch.FloatTensor)  # [10, 1048576] -> [10, 128]
-        # print(f"scene shape: {scene.x.shape}, scene reduction: {img_vec.shape}")
-        # text_vec = self.text_reduction(graph.x.to(self.device))
-        # print(f"graph shape: {graph.x.shape}, graph reduction shape: {text_vec.shape}")
-        # scene.x = img_vec.to(self.device)
-        # graph.x = text_vec.to(self.device)
-        # x2 = text_vec
-
         scene.x = scene.x.float()
         graph.x = graph.x.float()
 
@@ -186,13 +145,7 @@ class GraphMatchModel(nn.Module):
         else:
             # random(+sage), around(-e)
             sampling_num = len(graph.x)
-
-        # 1.选择与anchor相似度最高的前top个节点作为采样的起点，并去除重复节点
         sim_score = torch.matmul(scene.x, graph.x.t())
-        # values, indices = torch.topk(sim_score, sampling_num, dim=1, largest=True)
-        # # print(f"gpu {self.device} - anchor: {anchors}, values: {values}, index: {indices}")
-        # _, unique_indices = torch.unique(indices, dim=1, return_inverse=True)
-        # indices = unique_indices.squeeze()
 
         sorted_indices = torch.argsort(sim_score, dim=1, descending=True)
         top_indices = []
@@ -205,25 +158,16 @@ class GraphMatchModel(nn.Module):
 
         indices = torch.tensor(top_indices)
 
-        # print(f"gpu {self.device} - unique index : {indices.shape}")
-
-        # 2.计算知识图谱节点与场景图均值特征向量y的相似度，并基于相似度采样子图
-        # y = torch.mean(scene.x, dim=0)
-        # max_index = torch.argmax(sim_score, dim=0)
         max_sim_values, _ = torch.max(sim_score, dim=1)
         max_row_id = torch.argmax(max_sim_values).item()
         y = scene.x[max_row_id].unsqueeze(0)
         x_y_sim = torch.cosine_similarity(y, graph.x)
-        # print(f"scene x: {scene.x.shape}, graph x: {graph.x.shape}, sim_score: {sim_score.shape}, y: {y.shape}, x_y_sim: {x_y_sim.shape}")
-        # x_y_sim = F.softmax(x_y_sim, dim=0)
-        # nodes = set((node for node in index) for index in indices)
         subgraphs = sampler.get_sampling_subgraph(graph, id2attr, node_pair_rel, x_y_sim, indices, sampling_type,
                                                 int(self.sampling_bound), self.hops)
         
         if g_type == "GCN":
             scene_emb = self.g_encoder(scene.x, scene.edge_index, scene.batch)
 
-        # 3.采样子图进行嵌入计算和匹配度计算
         sub_first_txt = torch.tensor([]).to(self.device)
         sub_second_txt = torch.tensor([]).to(self.device)
         sub_embs = torch.tensor([]).to(self.device)
@@ -233,29 +177,20 @@ class GraphMatchModel(nn.Module):
         classes = []
 
         if refine == True:
-            # print(f"Number of subgraphs: {len(subgraphs)}")
             for start, subgraph in subgraphs.items():
                 classes.append(id2attr[start.item()])
                 subgraph = subgraph.to(self.device)
                 
                 if g_type == "GCN":
                     sub_emb = self.g_encoder(subgraph.x, subgraph.edge_index, subgraph.batch)
-                    # print(f"sub_emb: {sub_emb.shape}, sce_emb: {scene_emb.shape}")
 
                 elif g_type == "C-GAT":
-                    # print(f"subgraph.x: {subgraph.x.shape}, scene.x: {scene.x.shape}")
                     sub_emb, scene_emb = self.g_encoder(subgraph, scene)
-                    # print(f"sub_emb: {sub_emb.shape}, sce_emb: {scene_emb.shape}")
                     scene_embs = torch.cat((scene_embs, scene_emb), dim=0)
-                
-                # print(f"sub_emb: {sub_emb.shape}, sce_emb: {scene_emb.shape}")
 
                 match_degree = self.matching_score(scene_emb, sub_emb)
                 matches.append(match_degree)
                 sub_embs = torch.cat((sub_embs, sub_emb), dim=0)
-                # avg_ents = torch.stack([extractor.sent_embed(ent, self.attr_encoder, self.tokenizer, self.device) for ent in subgraph.y["ents"]])
-                # avg_ents = torch.mean(avg_ents, dim=0, keepdim=True).squeeze(0)
-                # print(f"avg_ents: {avg_ents.shape}")
                 sub_ents.append(subgraph.y["ents"])
 
                 if self.crop == True:
@@ -270,10 +205,7 @@ class GraphMatchModel(nn.Module):
                     sub_second_txt = torch.cat((sub_second_txt, 
                             extractor.sent_embed(subgraph.y["2"], self.attr_encoder, self.tokenizer, self.device)), dim=0)
             
-            # 对每个scene返回最大匹配度的子图
             match = torch.tensor(matches)
-            # print(f"match: {match.shape}")
-            # mat_value, mat_ind = torch.max(match, dim=0)
             top_values, top_indices = torch.topk(match, self.tops, dim=0, largest=True)
             top_values = top_values.unsqueeze(1).to(self.device)
             top_indices = top_indices.to(self.device)
@@ -304,18 +236,14 @@ class GraphMatchModel(nn.Module):
                         extractor.sent_embed(subgraph.y["1"], self.attr_encoder, self.tokenizer, self.device)), dim=0)
                 sub_second_txt = torch.cat((sub_second_txt, 
                         extractor.sent_embed(subgraph.y["2"], self.attr_encoder, self.tokenizer, self.device)), dim=0)
-            
-            # 对每个scene返回最大匹配度的子图
+
             match = torch.tensor(matches)
-            # print(f"match: {match.shape}")
             top_values, top_indices = torch.topk(match, self.tops, dim=0, largest=True)
             top_values = top_values.unsqueeze(1).to(self.device)
             top_indices = top_indices.to(self.device)
 
             scene_txt = extractor.sent_embed(scene.y, self.attr_encoder, self.tokenizer, self.device)
 
-        # print(f"sub_embs: {sub_embs.shape}, sub_first_txt: {sub_first_txt.shape}, sub_second_txt: {sub_second_txt.shape}, sub_ents; {len(sub_ents)}")
-        
         top_sub = sub_embs[top_indices]
         top_sub_first = sub_first_txt[top_indices]
         top_sub_second = sub_second_txt[top_indices]
@@ -327,15 +255,10 @@ class GraphMatchModel(nn.Module):
 
     
     def matching_score(self, sub_emb, sce_emb):
-        # 计算scene-graph matching score in definition
-        # C = torch.matmul(sub_emb, sce_emb.t()) 
-        # C = C.t() 
-        # normA = torch.norm(sce_emb, dim=1, keepdim=True)  # 计算A的范数
-        # normB = torch.norm(sub_emb, dim=1, keepdim=True)  # 计算B的范数
-        C = torch.matmul(sce_emb, sub_emb.t())  # 相似度矩阵归一化
+        C = torch.matmul(sce_emb, sub_emb.t())
 
-        max_similarity, _ = torch.max(C, dim=1)  # 每行的最大相似度
-        match_degree = torch.mean(max_similarity)  # 平均匹配度
+        max_similarity, _ = torch.max(C, dim=1) 
+        match_degree = torch.mean(max_similarity)  
 
         return match_degree
 
@@ -346,14 +269,11 @@ class GraphMatchModel(nn.Module):
         fs_simi_1 = torch.cosine_similarity(scene_txts, sub_first, dim=1).unsqueeze(1)
 
         f_simi = fv_simi + fs_simi_1 * global_weight
-        # print(f"f_simi: {f_simi}")
 
         top_k_values, top_k_indices = torch.topk(f_simi, k=3, dim=1)
         positive_mask = torch.zeros_like(f_simi)
         positive_mask.scatter_(1, top_k_indices[:, 0].unsqueeze(1), 1)
         negative_mask = 1 - positive_mask
-
-        # 将正样本和负样本分别与相似度矩阵相乘，得到正负样本对应的相似度
         positive_logits = torch.sum(f_simi * positive_mask, dim=1)
         negative_logits = torch.sum(f_simi * negative_mask, dim=1)
 
@@ -364,9 +284,6 @@ class GraphMatchModel(nn.Module):
         return loss
 
 
-
-
-#args=(knowledge_graph, id2attr, node_pair_rel, train_imgs, captions, args, train_ground, ent_dict)
 def train(gpu, kg, id2attr, node_pair_rel, images, captions, args, train_ground, ent_dict, lin_dim=512, lout_dim=512):
     
     rank = args.nr * args.gpus + gpu
@@ -375,11 +292,6 @@ def train(gpu, kg, id2attr, node_pair_rel, images, captions, args, train_ground,
     
     clip_model, clip_preprocess = clip.load("ViT-B/32", rank)
     kg = extractor.kg_x_load(args.root + args.data + args.kg_dir, "train", kg, id2attr, clip_model, gpu)
-    # with torch.no_grad():
-    #     tokens = [clip.tokenize(id2attr[i][:77]).to(gpu) for i in range(len(id2attr))]
-    #     x = [clip_model.encode_text(tokens[i]).to(gpu) for i in range(len(id2attr))]
-    #     x = torch.cat(x, dim=0)
-    #     kg.x = x / x.norm(dim=-1, keepdim=True)
 
     dist.init_process_group(
         backend='nccl',
@@ -401,8 +313,6 @@ def train(gpu, kg, id2attr, node_pair_rel, images, captions, args, train_ground,
     print("Turning off gradients in bert and clip encoders")
     for param in mm.attr_encoder.parameters():
         param.requires_grad = False
-    # for param in mm.clip_model.parameters():
-    #     param.requires_grad = False
 
     enabled = set()
     for name, param in mm.named_parameters():
@@ -410,15 +320,12 @@ def train(gpu, kg, id2attr, node_pair_rel, images, captions, args, train_ground,
             enabled.add(name)
     print(f"Parameters to be updated: {enabled}")
 
-    # warp the model
     mm1 = DDP(mm, device_ids=[gpu], find_unused_parameters=True)
     mm1.train()
-    # print(f"gpu {rank} - model: {mm}")
-    # print(f'gpu {rank} - model: {next(mm.parameters()).device}')
 
     split = int(len(images) / 2)
     scene_loader = DataLoader(images[: split - 1] if gpu == 0 else images[split: len(images)- 1],
-                              batch_size=args.batch_size, shuffle=True) # 在每个epoch开始时对数据进行随机打乱
+                              batch_size=args.batch_size, shuffle=True) 
 
     print(f"gpu {rank} - each gpu processes image number: {split}")
     
@@ -451,8 +358,6 @@ def train(gpu, kg, id2attr, node_pair_rel, images, captions, args, train_ground,
                 for path, scene in scenes.items():
                     mat_value, sub_emb, scene_emb, scene_txt, sub_first_txt, sub_second_txt, ents, classes_str = mm(kg, id2attr, 
                                 node_pair_rel, scene, args.g_type, clip_model, args.explore, args.refine, args.rf_clip, args.sampling_type)
-                    # print(f"mat_value: {mat_value.shape}, scene_txt: {scene_txt.shape},sub_first_txt: {sub_first_txt.shape}, 
-                    #         sub_second_txt: {sub_second_txt.shape}, ents: {len(ents)}")
 
                     mats.append(mat_value)
                     sub_embs.append(sub_emb)
@@ -467,14 +372,10 @@ def train(gpu, kg, id2attr, node_pair_rel, images, captions, args, train_ground,
                 scene_txts = torch.stack(scene_txts).to(gpu) # (batch_size, 1, v_dim)
                 sub_first = torch.stack(sub_first).to(gpu) # (batch_size, tops, t_dim)
                 sub_second = torch.stack(sub_second).to(gpu) # (batch_size, tops, t_dim)
-                # print(f"mats: {mats.shape}, scene_txts: {scene_txts.shape},sub_first: {sub_first.shape}, sub_second: {sub_second.shape}, secne_ents: {len(secne_ents)}")
 
                 ind += len(scenes)
-                # print(f"batch-{batch} for {len(mats)} images")
 
                 loss = mm.dist_loss(mats, scene_txts, sub_first, sub_second)
-                # print(f"loss: {loss}")
-                # loss = mm.margin_loss(zs, scene_embs, pos=0.7, neg=0.4)
 
             else:
                 mats = []
@@ -497,7 +398,6 @@ def train(gpu, kg, id2attr, node_pair_rel, images, captions, args, train_ground,
             loss.backward(retain_graph=True)
             optimizer.step()
 
-            # predict of matching pairs and evaluate
             if task in ['openImages']:
                 pred_scene_ents, truth_scene_ents = retrieval_prediction(
                                 mats, list(scenes.keys()), scene_ents, train_ground, ent_dict, args.tops, attr_encoder, tokenizer, gpu)
@@ -506,7 +406,6 @@ def train(gpu, kg, id2attr, node_pair_rel, images, captions, args, train_ground,
                 hits_at_k, mrr = calculate_hits_mrr(truth_scene_ents, pred_scene_ents, gpu, task, args.threshold)
             else:
                 pred_img_class, epoch_pred = retrieve_image_labels(mats, list(scenes.keys()), classes, epoch_pred, attr_encoder, tokenizer, gpu)
-                # hits_at_k, mrr = calculate_hits_mrr_global(train_ground, pred_img_class)
                 hits_at_k, mrr = calculate_hits_mrr(train_ground, pred_img_class, gpu, task, args.threshold, attr_encoder, tokenizer)
 
             if batch == 0: epoch_time = datetime.now() - start
@@ -530,8 +429,6 @@ def train(gpu, kg, id2attr, node_pair_rel, images, captions, args, train_ground,
         torch.save(mm.state_dict(), "./output/model" + "_" + task + "_" + args.g_type + ".pth")
         print(f"rank: {rank}, {epoch}-th complete")
 
-        # dist.barrier() # 同步参数
-
     suff = ''
     if args.explore == True:
         suff = suff + "_e" 
@@ -539,16 +436,10 @@ def train(gpu, kg, id2attr, node_pair_rel, images, captions, args, train_ground,
         suff = suff + "_r" 
     torch.save(mm.state_dict(), "./output/model" + "_" + task + "_" + args.g_type + suff + ".pth")
 
-    dist.destroy_process_group() # 释放空间
+    dist.destroy_process_group() 
 
 
-# train(gpu, kg, id2attr, node_pair_rel, images, captions, args, train_ground, ent_dict, lin_dim=512, lout_dim=512)
 def test(kg, id2attr, node_pair_rel, images, args, test_ground, ent_dict, lin_dim=512, lout_dim=512):
-    """
-        Hits@K(命中率)指的是在前 K 个推荐结果中，有多少个是用户实际感兴趣的项目
-        MRR(平均倒数排名)是指在所有用户的推荐结果中，计算用户感兴趣的项目在排序列表中的倒数排名的平均值
-    """
-
     scene_encoder = extractor.sam_encoder(args.device, args.sam_type, args.root + args.sam_ckp)
     attr_encoder, tokenizer = extractor.attr_encoder(args.root)
     clip_model, clip_preprocess = clip.load("ViT-B/32", args.device)
@@ -573,9 +464,8 @@ def test(kg, id2attr, node_pair_rel, images, args, test_ground, ent_dict, lin_di
     model.load_state_dict(torch.load("./output/model" + "_" + task + "_" + args.g_type + suff + ".pth"))
     model.eval()
 
-    scene_loader = DataLoader(images, batch_size=args.batch_size, shuffle=True) # 在每个epoch开始时对数据进行随机打乱
+    scene_loader = DataLoader(images, batch_size=args.batch_size, shuffle=True) 
 
-    # mats = torch.tensor([]).to(args.device)
     scene_ents = []
     with torch.no_grad():
         for img_list in scene_loader: ## batch
@@ -600,7 +490,6 @@ def test(kg, id2attr, node_pair_rel, images, args, test_ground, ent_dict, lin_di
         mats = torch.stack(mats).to(args.device)
 
     start = datetime.now()
-    # predict of matching pairs and evaluate
     if task in ['openImages']:
         pred_scene_ents, truth_scene_ents = retrieval_prediction(
                         mats, list(scenes.keys()), scene_ents, test_ground, ent_dict, args.tops, attr_encoder, tokenizer, args.device)
@@ -626,7 +515,6 @@ def calculate_hits_and_mrr(predicted_indices, true_index):
 
 
 def compute_metrics(prediction, label):
-    # 将预测结果和标签转换为 numpy 数组
     prediction = prediction.numpy()
     label = label.numpy()
 
@@ -642,14 +530,11 @@ def compute_metrics(prediction, label):
 
 
 def test_data_load(kg, file):
-    # data每一行包含image以及匹配的20个vertex label
     ids = []
     matches = []
 
-    # 读取 txt 文件
     with open(file, "r") as file:
         for line in file:
-            # 拆分每一行的内容
             line = line.strip().split(", ")
 
             id = int(line[0])
@@ -672,225 +557,4 @@ def get_vertex_id(str_value, graph):
         if graph.x[i] == str_value:
             return i
     return -1
-
-
-"""
-def train(gpu, kg, id2attr, node_pair_rel, images, args, lin_dim=128, lout_dim=128):
-    optimizer = optim.Adam(mm.parameters(), lr=args.learning_rate)
-    for epoch in range(args.num_epochs):
-        epoch_loss = 0
-
-        ind = 0
-        batch = 0
-        for img_list in scene_loader:  ## batch
-            ind += 1
-            start = datetime.now()
-
-            scenes = extractor.get_scene_batches(scene_encoder, img_list, args.iou_threshold, args.img_dir)
-            zs = torch.tensor([]).to(gpu)
-            scene_embs = torch.tensor([]).to(gpu)
-            for path, scene in scenes.items():
-                z, scene_emb = mm(kg, id2attr, node_pair_rel, scene,args.g_type)
-                zs = torch.cat((zs, z), dim=0)
-                scene_embs = torch.cat((scene_embs, scene_emb), dim=0)
-                if torch.numel(scene_emb) == 0:
-                    print(f"null encoded scene feature: {path}")
-                del scene
-
-            if torch.numel(scene_embs) == 0: continue
-
-            ind += len(scene_embs)
-            print(f"{len(img_list)} images, batch-{batch} for {len(scene_embs)} images")
-
-            loss = mm.margin_loss(zs, scene_embs, pos=0.7, neg=0.4)
-            # 梯度累积
-            loss = loss / steps  # 将损失值除以累积步数
-            loss.backward()
-
-            if ind % steps == 0:
-                # 更新参数
-                optimizer.step()
-                optimizer.zero_grad()
-                torch.cuda.empty_cache()
-
-            if ind % steps == 0 or ind == len(scene_loader):
-                print(f"gpu {rank} - batch {batch}, loss: {loss.item()}, takes {datetime.now() - start} sec")
-
-            del scene_embs, zs
-
-            batch += 1
-            epoch_loss += loss.item()
-"""
-
-"""
-    def margin_loss(self, z, scene_emb, pos = 0.5, neg = 0.3):
-        print(f"z shape: {z.shape}")
-        print(f"scene shape: {scene_emb.shape}")
-        similarities = torch.mm(scene_emb, torch.transpose(z, 0, 1))  # shape [1, z.shape[0]]
-        similarity_matrix = torch.sigmoid(similarities)
-        # 创建标签矩阵，相似度大于阈值a的为1，小于阈值b的为-1
-        labels = torch.where(similarity_matrix > pos, torch.tensor(1),
-                             torch.where(similarity_matrix < neg, torch.tensor(-1), torch.tensor(0)))
-        print(f"margin similarity_matrix: {similarity_matrix}")
-        print(f"margin labels: {labels}")
-
-        # 使用MarginRankingLoss计算margin loss
-        target = torch.zeros_like(labels)  # 创建目标值张量，全为零
-        loss = F.margin_ranking_loss(similarity_matrix.view(-1), labels.view(-1), target.view(-1), margin=0.5)
-
-        return loss
-"""
-
-"""
-def raw_train(scene_encoder, kg, scene_loader, args, lin_dim, lout_dim, g_type):
-    if g_type == "GCN":
-        g_encoder = GraphEncoder(input_dim=128, hidden_dim=128, output_dim=128)
-    elif g_type == "C-GAT":
-        g_encoder = CrossAttentionGAT(in_dim=128, hidden_dim=128, num_heads=8)
-
-    mm = GraphMatchModel(g_encoder, scene_encoder, temperature=0.1, args=args, lin_dim=lin_dim, lout_dim=lout_dim).to(args.device)
-    mm.train()
-    print(f"model: {mm}")
-    print(f'model: {next(mm.parameters()).device}')
-
-    steps = 8  # 每8个批次更新一次参数
-
-    optimizer = optim.Adam(mm.parameters(), lr=args.learning_rate)
-    for epoch in range(args.num_epochs):
-        epoch_loss = 0
-
-        ind = 0
-        for img_list in scene_loader: ## batch
-            ind += 1
-
-            scenes = extractor.get_scene_batches(scene_encoder, img_list, args.iou_threshold)
-            zs = torch.tensor([]).to(args.device)
-            scene_embs = torch.tensor([]).to(args.device)
-            for scene in scenes:
-                z, scene_emb = mm(kg, scene, g_type)
-                zs = torch.cat((zs, z), dim=0)
-                scene_embs = torch.cat((scene_embs, scene_emb), dim=0)
-                del scene
-
-            if torch.numel(zs) == 0: continue
-            loss = mm.margin_loss(zs, scene_embs, pos=0.7, neg=0.4)
-
-            # 梯度累积
-            loss = loss / steps  # 将损失值除以累积步数
-            loss.backward()
-
-            if ind % steps == 0:
-                # 更新参数
-                optimizer.step()
-                optimizer.zero_grad()
-                torch.cuda.empty_cache()
-
-            if ind % steps == 0 or ind == len(scene_loader) :
-                print(f"Batch {ind}/{len(scene_loader)}, Loss: {loss.item()}")
-
-            del scene_embs, scenes, zs
-
-            epoch_loss += loss.item()
-            # epoch_loss += batch_loss
-
-        # 在最后一个批次之后，确保更新最后一次参数
-        if ind % steps != 0:
-            optimizer.step()
-            optimizer.zero_grad()
-
-        epoch_loss = epoch_loss / len(scene_loader)
-        print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}")
-
-    # torch.save(mm.state_dict(), "model.pth")
-"""
-
-"""
-def train_1(scene_encoder, kg, scene_loader, args, lin_dim, lout_dim, g_type):
-    if g_type == "GCN":
-        g_encoder = GraphEncoder(input_dim=768, hidden_dim=128, output_dim=128)
-    elif g_type == "C-GAT":
-        g_encoder = CrossAttentionGAT(in_dim=768, hidden_dim=128, num_heads=8)
-
-    mm = GraphMatchModel(g_encoder, scene_encoder, temperature=0.1, args=args, lin_dim=lin_dim, lout_dim=lout_dim).to(args.device)
-    mm.train()
-    print(f"model: {mm}")
-    print(f'model: {next(mm.parameters()).device}')
-
-    ind = 0
-    optimizer = optim.Adam(mm.parameters(), lr=args.learning_rate)
-    for epoch in range(args.num_epochs):
-        epoch_loss = 0
-
-        for img_list in scene_loader: ## batch
-            batch_loss = 0
-
-            scenes = extractor.get_scene_batches(scene_encoder, img_list, args.iou_threshold)
-
-            zs = torch.tensor([]).to(args.device)
-            scene_embs = torch.tensor([]).to(args.device)
-            for scene in scenes:
-                z, scene_emb = mm(kg, scene, g_type)
-                zs = torch.cat((zs, z), dim=0)
-                scene_embs = torch.cat((scene_embs, scene_emb), dim=0)
-                del scene
-
-            loss = mm.margin_loss(zs, scene_embs, pos=0.7, neg=0.4)
-
-            batch_loss += loss.item()
-
-            # 梯度归零
-            optimizer.zero_grad()
-            torch.cuda.empty_cache()
-
-            # backpropagate and update the parameters
-            loss.backward()
-
-            optimizer.step()
-
-            batch_loss = batch_loss / len(scenes)  # average over batch
-            print(f"Batch loss: {batch_loss:.4f}")
-
-            del scene_embs, scenes, zs
-
-
-            epoch_loss += batch_loss
-        epoch_loss = epoch_loss / len(scene_loader)
-        print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}")
-
-    # torch.save(mm.state_dict(), "model.pth")
-"""
-
-"""
-    def compute_loss(self, z, scene_emb):
-        print(f"z length: {len(z)}")
-        similarities = torch.mm(scene_emb, z.t()) # shape [1, z.shape[0]]
-        similarities = torch.sigmoid(similarities)
-        _, top_indices = torch.topk(similarities, k=1, dim=1, largest=True) # todo k
-        pos_pairs = []
-        neg_pairs = []
-        for i in range(len(scene_emb)):
-            pos_pairs.append((i, top_indices[i][0])) # todo k=3, top_indices[i][1], top_indices[i][2]
-            for j in range(len(z)):
-                if j not in top_indices[i]:
-                    neg_pairs.append((i, j))
-
-        print(f"pos_pairs: {len(pos_pairs)}, neg_pairs: {len(neg_pairs)}")
-        pos_pairs = torch.tensor(pos_pairs)
-        neg_pairs = torch.tensor(neg_pairs)
-        num_neg_pairs = len(neg_pairs)
-        labels = torch.cat([torch.ones(self.pos_num), torch.zeros(num_neg_pairs)])
-        pos_sim = similarities[pos_pairs[:, 0].unsqueeze(1), pos_pairs[:, 1:]] # shape [1, 3]
-        neg_sim = similarities[neg_pairs[:, 0], neg_pairs[:, 1]] # shape [z.shape[0] - 3]
-        print(f"pos_sim: {pos_sim.shape}, neg_sim: {neg_sim.shape}， labels: {labels.shape}")
-        neg_sim = neg_sim.expand(pos_sim.shape[0], -1)
-        labels = labels.expand(pos_sim.shape[0], -1).to(torch.float32).to(self.device)
-        similarities = torch.cat([pos_sim, neg_sim], dim=1)
-        # print(f"similarities: {similarities}, labels: {labels}")
-        print(f"similarities: {similarities.shape}, labels: {labels.shape}")
-        loss = self.loss_fn(similarities, labels)
-
-        return loss
-"""
-
-
 
