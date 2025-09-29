@@ -15,9 +15,7 @@ import pickle
 
 def attr_encoder(root):
     cache_dir = root + "bert-base-uncased"
-    # Create a BERT tokenizer to convert vertex labels to indices
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', cache_dir=cache_dir, local_files_only=True)
-    # Create a BERT model to extract features from vertex labels
     model = BertModel.from_pretrained("bert-base-uncased", cache_dir=cache_dir, local_files_only=True,
                                       output_hidden_states=True)
     model.eval()
@@ -26,14 +24,11 @@ def attr_encoder(root):
     return model, tokenizer
 
 def sent_embed(sentence, model, tokenizer, device):
-    # 将句子编码为BERT输入格式
     inputs = tokenizer.encode_plus(sentence, add_special_tokens=True, return_tensors='pt').to(device)
 
-    # 获取句子的BERT向量
     with torch.no_grad():
         outputs = model(inputs['input_ids'], attention_mask=inputs['attention_mask'])
 
-    # 提取句子的向量表示
     sentence_vector = outputs.last_hidden_state.mean(dim=1)
 
     return sentence_vector
@@ -58,32 +53,21 @@ def attr_feature(entity_index, model, tokenizer):
     vertex_labels = entity_index.keys()
     num_vertices = len(entity_index)
 
-    # Create an embedding layer to map BERT features to vertex embeddings
     embedding = nn.Embedding(num_vertices, 768)
-    print(f"embedding shape: [{num_vertices}, 768]")
 
-    # Initialize a tensor to store vertex embeddings
     vertex_embeddings = torch.zeros(num_vertices, 768)
 
-    # Iterate over each vertex label and compute its embedding
     for i, label in enumerate(vertex_labels):
-        # Add special tokens to vertex label
         marked_label = "[CLS] " + label + " [SEP]"
-        # Tokenize vertex label
         tokenized_label = tokenizer.tokenize(marked_label)
-        # Convert tokenized label to indices
         indexed_label = tokenizer.convert_tokens_to_ids(tokenized_label)
-        # Convert indices to tensor
         label_tensor = torch.tensor([indexed_label])
-        # Extract features from vertex label using BERT model
         with torch.no_grad():
             outputs = model(label_tensor)
             hidden_states = outputs[2]
 
-        # Get the last hidden state of the first token ([CLS]) as the vertex representation
         label_representation = hidden_states[-1][0][0]
 
-        # Store vertex embedding in tensor
         vertex_embeddings[i] = label_representation
 
     vertex_embeddings = torch.tensor(vertex_embeddings).to(torch.float)
@@ -111,7 +95,6 @@ def read_caption_dict(file_path):
     
     return dict
 
-#file = "/home/zhangjunyu/yq/Match/cache/guidance/train_openImages_with_guidance.json"
 def get_img_caption(file, mode, dataset):
     import json
     path = file + mode + "_" + dataset + "_with_guidance.json"
@@ -140,16 +123,8 @@ def get_img_caption(file, mode, dataset):
 
 def get_scene_graph(mask_generator, image_path, iou_threshold, 
                     vis_merge, crop, image_encoder, clip_preprocess, device, captions=None):
-    """
-        x: vertex feature
-        edge_index: 2-dim edge list
-        y: mean representation of vertices in scene graph
-    """
 
     logging.info(image_path)
-
-    # 提取目录路径
-    # filename = os.path.splitext(os.path.basename(image_path))[0]
 
     imageid = str(image_path.split("/")[-1].split(".")[0])
 
@@ -158,9 +133,7 @@ def get_scene_graph(mask_generator, image_path, iou_threshold,
     pixel_embs, edge_index = handler.img_to_graph(mask_generator, image_path, vis_merge, crop, 
                                                   image_encoder, clip_preprocess, device, iou_threshold)
 
-    # pixel_embs: (1, 256, 64, 64)
     obj_embs = pixel_embs.clone().detach().to(torch.float)
-    # vertex_embeddings = torch.tensor(pixel_embs, dtype=torch.float)
     obj_embs = obj_embs / obj_embs.norm(dim=-1, keepdim=True)
     edge_index = torch.tensor(edge_index, dtype=torch.long).t()
 
@@ -170,7 +143,6 @@ def get_scene_graph(mask_generator, image_path, iou_threshold,
         caption = captions[imageid]
     else:
         caption = ""
-    # print(f"imageid: {imageid}, caption: {caption}")
     scene_graph.y = caption
 
     print(f"Number of {len(pixel_embs)} masks feature extraction takes: {datetime.now() - start}.")
