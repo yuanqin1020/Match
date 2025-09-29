@@ -21,7 +21,6 @@ from datetime import datetime
 from evaluate import *
 
 
-# Define the C-GAT model
 class CrossAttentionGAT(nn.Module):
     def __init__(self, in_dim, hidden_dim, num_heads):
         super(CrossAttentionGAT, self).__init__()
@@ -63,8 +62,6 @@ class CrossAttentionGAT(nn.Module):
 
         return cross_att_1, cross_att_2
 
-
-# Define GraphSAGE model
 class GraphSAGE(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, agg_fun):
         super(GraphSAGE, self).__init__()
@@ -81,29 +78,25 @@ class GraphSAGE(nn.Module):
 
         return x
     
-# 定义无监督的GraphSAGE损失函数
 def unsupervised_loss(z, edge_index):
-    adj_scores = torch.mm(z, z.t())  # 邻接矩阵分数
-    adj_mask = 1 - torch.eye(adj_scores.shape[0])  # 排除自连接
+    adj_scores = torch.mm(z, z.t())
+    adj_mask = 1 - torch.eye(adj_scores.shape[0]) 
 
-    # 归一化相似度
     min_value = adj_scores.min()
     max_value = adj_scores.max()
     adj_scores = (adj_scores - min_value) / (max_value - min_value)
 
-    adj_scores = adj_scores * adj_mask  # 仅保留邻居节点之间的分数
-    adj_pred = torch.sigmoid(adj_scores)  # 邻接矩阵预测
+    adj_scores = adj_scores * adj_mask  
+    adj_pred = torch.sigmoid(adj_scores) 
 
-    # 构建邻接矩阵
     num_nodes = edge_index.max().item() + 1
     adj_matrix = torch.zeros((num_nodes, num_nodes))
     adj_matrix[edge_index[0], edge_index[1]] = 1
 
-    loss = F.binary_cross_entropy(adj_pred, adj_matrix)  # 计算二分类交叉熵损失
+    loss = F.binary_cross_entropy(adj_pred, adj_matrix)  
     return loss
 
 
-# Train GraphSAGE model
 def graphsage_train(args, input_dim, train_data):
     model = GraphSAGE(input_dim, args.hidden_channels, args.out_channels, args.agg_fun)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -121,11 +114,6 @@ def graphsage_train(args, input_dim, train_data):
             x = model(batch)
             loss = unsupervised_loss(x, batch.edge_index)
 
-            # # Generate positive and negative samples for unsupervised loss
-            # pos_edge_index = batch.edge_index
-            # neg_edge_index = negative_sampling(batch.edge_index, num_neg_samples=5)
-            # loss = unsupervised_loss(x, pos_edge_index, neg_edge_index)
-
             loss.backward()
             optimizer.step()
             # print(f"batch loss: {loss.item()}")
@@ -137,21 +125,3 @@ def graphsage_train(args, input_dim, train_data):
     torch.save(model.state_dict(), args.root + args.cache + 'model_SAGE_' + args.data.split("/")[-2] + args.new_trip + '.pt')
     print("graph model saved.")
 
-
-
-# # Use the trained model for inferring vertex reps
-# def graphsage_inference(args, input_dim, data, train_class, test_seen_classes, test_unseen_classes):
-#     print(f"infer seen classes {len(test_seen_classes)}, unseen classes: {len(test_unseen_classes)}")
-
-#     model = GraphSAGE(input_dim, args.hidden_channels, args.out_channels, args.agg_fun)
-
-#     model.load_state_dict(
-#         torch.load(args.root + args.cache + 'model_' + args.g_type + '_' + args.data.split("/")[-2] + args.new_trip + '.pt'))
-#     model.eval()
-
-#     pre_embeds = {}
-#     out = model(data)
-#     for i in range(len(data.y)):
-#         pre_embeds[data.y[i]] = out[i]
-
-#     return pre_embeds
