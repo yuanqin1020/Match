@@ -37,7 +37,7 @@ plt.subplots_adjust(bottom=0.6, hspace=0.3)
 plt.legend(fontsize=18)
 plt.tight_layout()
 # 保存为eps文件
-plt.savefig('/Users/yuanqin/Desktop/Paper/Semantic-driven EM/submission in revision/figures/exp_train.eps', format='eps')
+plt.savefig('.../exp_train.eps', format='eps')
 
 # 显示图形
 plt.show()
@@ -85,7 +85,7 @@ plt.subplots_adjust(bottom=0.6, hspace=0.3)
 plt.legend(fontsize=18)
 plt.tight_layout()
 # 保存为eps文件
-plt.savefig('/Users/yuanqin/Desktop/Paper/Semantic-driven EM/submission in revision/figures/exp_test.eps', format='eps')
+plt.savefig('.../exp_test.eps', format='eps')
 
 # 显示图形
 plt.show()
@@ -108,7 +108,7 @@ plt.yticks(fontsize=22)
 
 plt.tight_layout()
 # 保存为eps文件
-plt.savefig('/Users/yuanqin/Desktop/Paper/Semantic-driven EM/submission in revision/figures/exp_mrr.eps', format='eps')
+plt.savefig('.../exp_mrr.eps', format='eps')
 
 # 显示图形
 plt.show()
@@ -134,9 +134,8 @@ plt.yscale('log')
 plt.legend(fontsize=20)
 plt.tight_layout()
 # 保存为eps文件
-plt.savefig('/Users/yuanqin/Desktop/Paper/Semantic-driven EM/submission in revision/figures/exp_time.eps', format='eps')
+plt.savefig('.../exp_time.eps', format='eps')
 
-# 显示图形
 plt.show()
 # 重置matplotlib设置
 plt.clf()
