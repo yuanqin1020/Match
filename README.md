@@ -5,7 +5,7 @@ CrossETR is a novel semantic-driven entity matching framework (namely ) that fol
 
 For more technical details, see [CrossETR: A Semantic-Driven Framework for Entity Matching Across Images and Graph](https://ieeexplore.ieee.org/document/11113064).
 
-![Overall architecture of CrossETR framework. ](./CrossETR.jpg)
+![Overall architecture of CrossETR framework. ](./CrossETR.png)
 
 ## Dependencies and Installion
 scikit-learn==1.3.2
@@ -45,10 +45,6 @@ e.g.
 ```
 python ./main_paral.py --data /dataset/FB15k --sampling_type random
 ```
-- Task parameters: bert_name, data_name, k (the proportion of training data used)
-- Pre-training parameters: gm (GIN, GAT, SAGE), gm_mode, gm_lr, gm_in(768), gm_out(128), gm_agg(mean, sum, max"), gm_batch, gm_epochs, gm_hidden(256), gm_layer(2), hops, gm_temperature, dropout(0.1)
-- Promoting parameters: task(sm, map, em"), prompting(agg, weighted, linear, weighted-sum, weighted-sum-p, att), p_num(10), update_pretrain, lr(0.00001), w, sc, batch_size, num_epochs
-
 - Basic arguments:
     model_name, bert_name, sam_type, root, sam_ckp, device, iou_threshold, data, kg_dir, img_dir, annotate
 - optimization parameters:
