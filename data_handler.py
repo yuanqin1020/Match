@@ -9,7 +9,7 @@ import torch.nn as nn
 from transformers import BertTokenizer, BertModel
 from sklearn.cluster import KMeans
 
-cache_dir="/home/yuanqin/SceneMatch/Match/bert-base-uncased"
+cache_dir=".../bert-base-uncased"
 
 
 def read_str_triples(file):
@@ -47,31 +47,12 @@ def get_triples_id(triples):
 
     return ent_dict, rel_dict, triple_id
 
-"""
-def read_kg_input(folder):
-    triples_set = read_str_triples(folder + '/kg_triples_text.txt')
-    kg = KG(triples_set)
-    ent_dict, rel_dict, triple_id = get_triples_id(triples_set)
-    print('total ents:', len(ent_dict))
-    print('total rels:', len(rel_dict))
-    print('total triples:', len(triple_id))
-
-    return kg, ent_dict, rel_dict, triple_id
-"""
 
 def read_img_list(folder):
     img_paths = [os.path.join(folder, file) for file in os.listdir(folder)]
     print(f"image number: {len(img_paths)}")
 
     return img_paths
-
-"""
-def sg_load_data(kg_folder, image_folder):
-    kg, ent_dict, rel_dict, triple_id = read_kg_input(kg_folder)
-    img_paths = read_img_list(image_folder)
-
-    return kg, ent_dict, rel_dict, triple_id, img_paths
-"""
 
 def bbox_overlap(bbox_1, bbox_2):
     ## (X, Y, W, H)
@@ -147,16 +128,6 @@ def get_iou(box1, box2):
     """
     Calculate the Intersection over Union (IoU) of two bounding boxes.
     """
-    # print(f"bb1: {bb1}")
-    # print(f"bb2: {bb2}")
-    '''
-        import torchvision.ops.boxes as bops
-        bb1 = torch.tensor([bb1], dtype=torch.float)
-        bb2 = torch.tensor([bb2], dtype=torch.float)
-        iou = bops.box_iou(bb1, bb2)[0]
-    '''
-
-    # Convert [xmin, ymax, width, height] to [xmin, ymin, xmax, ymax]
     box1 = [box1[0], box1[1] - box1[3], box1[0] + box1[2], box1[1]]
     box2 = [box2[0], box2[1] - box2[3], box2[0] + box2[2], box2[1]]
 
@@ -203,13 +174,11 @@ def img_cluster_to_graph(mask_generator, image_path, iou_threshold, n_clusters):
     bboxes = torch.tensor([masks[i]['bbox'] for i in range(len(masks))])
     mask_embeds = torch.tensor([masks[i]['embed'] for i in range(len(masks))])
 
-    # 将mask_embeddings转换为2D张量
     mask_embeds_flat = mask_embeds.view(len(masks), -1)
-    # 使用K-means聚类算法
+
     kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(mask_embeds_flat)
     labels = kmeans.labels_
 
-    # 计算每个聚类的均值向量，并创建一个字典来存储每个聚类的mask和bounding box
     cluster_dict = {}
     for cluster_label in range(n_clusters):
         print(f"cluster {cluster_label}")
@@ -227,7 +196,6 @@ def img_cluster_to_graph(mask_generator, image_path, iou_threshold, n_clusters):
         }
     print(f"cluster_dict: {len(cluster_dict)}")
 
-    ## create scene graph for cluster masks
     edge_index = []
     for cluster_label in cluster_dict.keys():
         cluster_info = cluster_dict[cluster_label]
@@ -237,7 +205,6 @@ def img_cluster_to_graph(mask_generator, image_path, iou_threshold, n_clusters):
 
         x = torch.cat((x, mean_embed), dim=0)
 
-        # 生成边索引张量
         for cluster_label2 in cluster_dict.keys():
             if cluster_label >= cluster_label2:
                 continue
@@ -247,7 +214,6 @@ def img_cluster_to_graph(mask_generator, image_path, iou_threshold, n_clusters):
             bboxes2 = cluster_info2['bboxes']
             mean_embed2 = cluster_info2['mean_embed']
 
-            # 检查bounding box是否有交集
             if boundingbox_overlap(bboxes, bboxes2):
                 edge_index.append([cluster_label, cluster_label2])
 
@@ -266,20 +232,14 @@ def nms_refine_masks(masks, iou_threshold):
     embeds = torch.tensor([masks[i]['embed'] for i in range(len(masks))])
     scores = torch.tensor([masks[i]['stability_score'] for i in range(len(masks))])
 
-    # Sort the bounding boxes based on stability scores
     sorted_indices = np.argsort(-scores)
     refined_masks = []
 
     print(f"sorted_indices {sorted_indices}")
     while len(sorted_indices) > 0:
-        # Select the bounding box with the highest stability score
         current_index = sorted_indices[0]
         refined_masks.append(embeds[current_index])
-
-        # Calculate IoU with other bounding boxes
         ious = [get_iou(bboxes[current_index], bboxes[i]) for i in sorted_indices[1:]]
-
-        # Remove bounding boxes with IoU greater than the threshold
         indices_to_remove = np.where(np.array(ious) > iou_threshold)[0] + 1
         sorted_indices = np.delete(sorted_indices, indices_to_remove)
 
@@ -294,23 +254,12 @@ def img_to_graph(mask_generator, image_path, vis_merge, crop, image_encoder, cli
         image_bgr = cv2.imread(image_path)
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
-        # dict_keys(['segmentation', 'area', 'bbox', 'predicted_iou', 'point_coords', 'stability_score', 'crop_box', 'embed'])
         masks = mask_generator.generate(image_rgb)
         # print(f"masks numbers: {len(masks)}")
     except Exception as e:
         print(f"encounter error: {image_path}")
         print(e)
         return x, edge_index
-
-    # ## Show all the masks overlayed on the image
-    # plt.figure(figsize=(20, 20))
-    # plt.imshow(image_rgb)
-    # utils.show_anns(masks)
-    # plt.axis('off')
-    # plt.show()
-
-    # refine_masks = nms_refine_masks(masks, iou_threshold)
-    # print(f"refined masks number: {len(refine_masks)}")
 
     if vis_merge == True:
         pixel_embs, edge_index = visual_instance_merge(masks)
@@ -328,7 +277,6 @@ def img_to_graph(mask_generator, image_path, vis_merge, crop, image_encoder, cli
 def visual_instance_merge(masks, threshold_area=0.05):
     refine_masks = masks
 
-    # 根据bbox的重叠程度分组
     grouped_masks = {}
     best_masks = []
     for i in range(len(refine_masks)):
@@ -347,8 +295,7 @@ def visual_instance_merge(masks, threshold_area=0.05):
 
         if not is_overlapped:
             best_masks.append(mask_i)
-                
-    # 选择每组重叠程度较大的mask中面积最大的一个
+
     for i, group in grouped_masks.items():
         max_area = refine_masks[i]['area']
         best_mask = refine_masks[i]
@@ -365,31 +312,18 @@ def visual_instance_merge(masks, threshold_area=0.05):
 
     return pixel_embs, edge_index
 
-
-# pixel_embs, edge_index = get_crop_embeddings(refine_masks, image_rgb, image_encoder, clip_preprocess, device)
 def get_crop_embeddings(refine_masks, image_rgb, image_encoder, preprocess, device):
     from PIL import Image
 
     features = []
     edge_index = []
 
-    # Step 1: Extract cropped images from refine_masks
     for i in range(len(refine_masks)):
         mask = refine_masks[i]
         crop_box = mask['crop_box']
         x, y, w, h = map(int, crop_box)
         crop_image = image_rgb[y:y+h, x:x+w]
-        # crop_image = image_rgb[int(crop_box[1]):int(crop_box[3]), int(crop_box[0]):int(crop_box[2])]
 
-        # xmin, ymin, xmax, ymax = map(int, crop_box.tolist())
-        # crop_image = image_rgb.crop((xmin, ymin, xmax, ymax))
-
-        # # Step 1.1: Display crop_image
-        # cv2.imshow("Crop Image", crop_image)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-
-        # Step 2: Preprocess the cropped images
         pil_image = Image.fromarray(crop_image)
         preprocessed_image = preprocess(pil_image).unsqueeze(0).to(device)
         preprocessed_image = preprocessed_image.type(torch.half)
@@ -404,8 +338,6 @@ def get_crop_embeddings(refine_masks, image_rgb, image_encoder, preprocess, devi
             if i == j: continue
             if get_iou(refine_masks[i]['bbox'], refine_masks[j]['bbox']) > 0:
                 edge_index.append([i, j])
-
-    # print(f"features: {len(features)}, features[0]: {features[0].shape}")
 
     return features, edge_index
 
@@ -430,39 +362,21 @@ def get_attr_embeds(entity_index):
     vertex_labels = entity_index.keys()
     num_vertices = len(entity_index)
 
-    # Create a BERT tokenizer to convert vertex labels to indices
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', cache_dir=cache_dir, local_files_only=True)
-    # Create a BERT model to extract features from vertex labels
     model = BertModel.from_pretrained("bert-base-uncased", cache_dir=cache_dir, local_files_only=True, output_hidden_states=True)
     model.eval()
-
-    # Create an embedding layer to map BERT features to vertex embeddings
     embedding = nn.Embedding(num_vertices, 768)
     print(f"Number of kg vertices: {num_vertices}, vertex embedding shape: [{num_vertices}, 768]")
-
-    # Initialize a tensor to store vertex embeddings
     vertex_embeddings = torch.zeros(num_vertices, 768)
-
-    # Iterate over each vertex label and compute its embedding
     for i, label in enumerate(vertex_labels):
-        # if i > 100: break
-        # Add special tokens to vertex label
         marked_label = "[CLS] " + label + " [SEP]"
-        # Tokenize vertex label
         tokenized_label = tokenizer.tokenize(marked_label)
-        # Convert tokenized label to indices
         indexed_label = tokenizer.convert_tokens_to_ids(tokenized_label)
-        # Convert indices to tensor
         label_tensor = torch.tensor([indexed_label])
-        # Extract features from vertex label using BERT model
         with torch.no_grad():
             outputs = model(label_tensor)
             hidden_states = outputs[2]
-
-        # Get the last hidden state of the first token ([CLS]) as the vertex representation
         label_representation = hidden_states[-1][0][0]
-
-        # Store vertex embedding in tensor
         vertex_embeddings[i] = label_representation
 
     vertex_embeddings = torch.tensor(vertex_embeddings).to(torch.float)
