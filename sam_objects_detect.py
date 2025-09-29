@@ -7,7 +7,6 @@ from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamP
 from pycocotools import mask as mask_utils
 
 
-# extracts the mask annotations from the model output and plots them
 def show_anns(anns):
     if len(anns) == 0:
         return
@@ -26,8 +25,8 @@ def show_anns(anns):
 
 
 model_type = "vit_h"
-image_path = "/home/yuanqin/SceneMatch/MKGformer-main/image-graph_images/m.0100mt/google_14.jpg"
-ckp_path = "/home/yuanqin/SceneMatch/sam/sam_vit_h_4b8939.pth"
+image_path = ".../google_14.jpg"
+ckp_path = ".../sam/sam_vit_h_4b8939.pth"
 
 image_bgr = cv2.imread(image_path)
 image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
@@ -48,20 +47,6 @@ predictor.set_image(image_rgb)
 image_embedding = predictor.get_image_embedding().cpu().numpy()
 print(f"predictor embed: {image_embedding}")
 
-
-
-# predictor = SamPredictor(sam)
-# predictor.set_image(image_rgb)
-# # Returns the image embeddings with shape 1xCxHxW, where C is the embedding dimension
-# # and (H,W) are the embedding spatial dimension of SAM (typically C=256, H=W=64).
-# image_embedding = predictor.get_image_embedding().cpu().numpy()
-# print(f"image embedding type: {type(image_embedding)}, shape: {image_embedding.shape}")
-
-# plt.figure(figsize=(20,20))
-# plt.imshow(image_rgb)
-# show_anns(masks)
-# plt.axis('off')
-# plt.show()
 
 
 # print(f"segmentation shape: {mask.shape()}")
