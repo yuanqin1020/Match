@@ -21,29 +21,18 @@ def map_img(img_path, data, ent2txt):
     return class_name, class_id
 
 def true_targets(image_paths, data, ent2txt=None):
-    # true_class_img = {}
     true_img_class = {}
 
     for i in range(len(image_paths)):
         name, id = map_img(image_paths[i], data, ent2txt)
         true_img_class[image_paths[i]] = name
 
-        # if name not in true_class_img.keys():
-        #     true_class_img[name] = []
-        # true_class_img[name].append(image_paths[i])
-
     return true_img_class
 
 
 def retrieve_image_labels(mats, imgs, classes, epoch_pred, attr_encoder, tokenizer, device):
-    """
-        Retrieve texts for image: k = 1 (image classification)
-    """
-    # logits = (100.0 * image_features @ text_features.T).softmax(dim=-1)
-
     pred_img_class = {}
     predictions = {}
-    # print(f"images: {imgs}, classes: {classes[:10]}, mats: {mats.shape}")
 
     for i in range(len(imgs)):  # image
         predicted, indices = torch.topk(mats[i], 3, dim=0)
@@ -64,12 +53,10 @@ def retrieve_image_labels(mats, imgs, classes, epoch_pred, attr_encoder, tokeniz
 def retrieval_prediction(mats, imageids, secne_ents, train_ground, ent_dict, tops, attr_encoder, tokenizer, device):
     pred_scene_ents = {}
 
-    # print(f"evaluate for {len(mats)}")
     for i in range(len(mats)):
         _, indices = torch.topk(mats[i], tops, dim=0, largest=True)
         imageid = imageids[i].split("/")[-1].split(".")[0]
 
-        # print(f"indices: {indices}")
         for ind in indices:
             # ents = torch.tensor([ent_dict[ent] for ent in secne_ents[ind]])
             # print(f"secne_ents[i][ind]: {len(secne_ents[i][ind])}, {secne_ents[i][ind].shape}")
@@ -107,9 +94,7 @@ def retrieval_prediction(mats, imageids, secne_ents, train_ground, ent_dict, top
 
 
 def obtain_ground_truth(task_root, mode):
-    # 000018acd19b4ad3: ['/m/013y0j', '/m/014qzr', '/m/014sv8']
     image_ents = task_root + "/" + mode + "-image-ents.txt"
-    # /m/0104x9kv,Vinegret
     ent_des = task_root + "/ent-descriptions.csv"
 
     ent_dict = {}
@@ -131,20 +116,11 @@ def obtain_ground_truth(task_root, mode):
 
     return image_ent_dict, ent_dict
 
-
-# Hits@k反映了模型在前k个结果中的准确率
-# 预测出的结果中，正确结果出现的平均倒数位置，MRR越大，模型的排序效果越好
-# Hits@k衡量了模型的准确率，MRR衡量了模型的排序能力
 def calculate_hits_mrr(ground_truths, predictions, device, task, threshold, attr_encoder=None, tokenizer=None, k_values = [1, 3, 5, 10]):
     print(f"Testing task is {task}")
     hits = {k: 0 for k in k_values}
     mrr = 0
     
-    # print(f"ground truth: {ground_truths.keys()}")
-    # for index, (ke, val) in enumerate(predictions.items()):
-    #     if index == 0:
-    #         print(f"predict: {ke}, {val}, {val.shape}")
-
     for key in predictions.keys():
 
         if key not in ground_truths.keys():
@@ -178,16 +154,12 @@ def calculate_hits_mrr(ground_truths, predictions, device, task, threshold, attr
                 
                     break
 
-    # if task in ["openImages", "FB15k"]:
+
     total_keys = len(ground_truths.keys() & predictions.keys())
-    # else:
-    #     total_keys = len(predictions.keys())
+
     hits_at_k = {k: round(hits[k] / total_keys * 100.0, 5) for k in k_values}
     mean_reciprocal_rank = round(mrr / total_keys / len(hits), 5)
-    
-    # hits_at_k = {k: round(hits[k] / len(predictions) * 100.0, 5) for k in k_values}
-    # mean_reciprocal_rank = round(mrr / len(predictions) / len(hits), 5)
-    
+
     return hits_at_k, mean_reciprocal_rank
 
 
@@ -205,9 +177,6 @@ def calculate_hits_mrr_global(ground_truths, predictions, k_values = [1, 3, 5, 1
             continue
         ground_truth = ground_truths[key]
         prediction = predictions[key]
-        
-        # print(f"ground_truth: {ground_truth}")
-        # print(f"prediction: {prediction}")
 
         for k in k_values:
             rank = -1
@@ -227,31 +196,3 @@ def calculate_hits_mrr_global(ground_truths, predictions, k_values = [1, 3, 5, 1
     mean_reciprocal_rank = round(mrr / len(predictions) / len(hits), 5)
 
     return hits_at_k, mean_reciprocal_rank
-
-# def retrieve_image_labels(mats, imgs, classes, epoch_pred):
-#     """
-#         Retrieve texts for image: k = 1 (image classification)
-#     """
-#     # logits = (100.0 * image_features @ text_features.T).softmax(dim=-1)
-
-#     pred_class_img = {}
-#     # print(f"images: {imgs}, classes: {classes[:10]}, mats: {mats.shape}")
-
-#     for i in range(len(imgs)):  # image
-#         predicted, indices = torch.topk(mats[i], 10, dim=0)
-#         unique_indices = torch.unique(indices)
-#         # print(f"{indices}; {predicted}; {unique_indices}")
-
-#         top_k_txts = [classes[index.item()] for index in unique_indices] # class
-#         for cl in top_k_txts:
-#             if cl not in pred_class_img.keys():
-#                 pred_class_img[cl] = []
-#             pred_class_img[cl].append(imgs[i])
-
-#             if cl not in epoch_pred.keys():
-#                 epoch_pred[cl] = []
-#             epoch_pred[cl].append(imgs[i])
-
-#     # print(f"retrieval: {pred_class_img}")
-
-#     return pred_class_img, epoch_pred
