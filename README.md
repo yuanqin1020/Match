@@ -23,9 +23,9 @@ transformers==4.24.0
 
 We recommend creating a new conda environment to install the dependencies:
 ```
-conda env remove --name promptdi
-conda create -y -n promptdi python=3.9
-conda activate promptdi
+conda env remove --name cross
+conda create -y -n cross python=3.9
+conda activate cross
 pip install transformers==4.24.0
 ```
 
